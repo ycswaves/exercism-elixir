@@ -6,6 +6,8 @@ defmodule Bowling do
   @invalid_pin_count {:error, "Pin count exceeds pins on the lane"}
   @game_not_ended {:error, "Score cannot be taken until the end of the game"}
   @game_over {:error, "Cannot roll after game is over"}
+  @last_frame 10
+  @strike 10
 
   @spec start() :: any
   def start do
@@ -18,9 +20,13 @@ defmodule Bowling do
     case it returns a helpful message.
   """
 
-  defguard invalid_pin_count(t1, roll) when t1 < 10 and roll + t1 > 10
-  defguard invalid_pin_count(roll) when roll > 10
-  defguard invalid_pin_count(t1, t2, roll) when t1 == 10 and t2 < 10 and roll + t2 > 10
+  defguard invalid_pin_count(t1, roll) when t1 < @strike and roll + t1 > @strike
+  defguard invalid_pin_count(roll) when roll > @strike
+
+  defguard invalid_pin_count(t1, t2, roll)
+           when t1 == @strike and t2 < @strike and roll + t2 > @strike
+
+  defguard is_spare(t1, t2) when t1 + t2 == @strike
 
   def roll(_, roll) when invalid_pin_count(roll), do: @invalid_pin_count
 
@@ -29,32 +35,28 @@ defmodule Bowling do
   end
 
   # frame #10 with fill
-  def roll({10, [{t1, t2} | _]}, roll) when invalid_pin_count(t1, t2, roll) do
+  def roll({@last_frame, [{t1, t2} | _]}, roll) when invalid_pin_count(t1, t2, roll) do
     @invalid_pin_count
   end
 
-  def roll({10, [{t1, t2} | rest_frames]}, roll)
-      when t1 + t2 == 10 do
-    {10, [{t1, t2, roll} | rest_frames]}
+  def roll({@last_frame, [{t1, t2} | rest_frames]}, roll) when is_spare(t1, t2) do
+    {@last_frame, [{t1, t2, roll} | rest_frames]}
   end
 
-  def roll({10, [{t1, 10} | rest_frames]}, roll) do
-    {10, [{t1, 10, roll} | rest_frames]}
+  def roll({@last_frame, [{t1, @strike} | rest_frames]}, roll) do
+    {@last_frame, [{t1, @strike, roll} | rest_frames]}
   end
 
-  def roll({10, [{10, t2} | rest_frames]}, roll) do
-    {10, [{10, t2, roll} | rest_frames]}
+  def roll({@last_frame, [{@strike, t2} | rest_frames]}, roll) do
+    {@last_frame, [{@strike, t2, roll} | rest_frames]}
   end
 
-  # frame #10 after 1st throw
-
-  def roll({10, [{t1} | rest_frames]}, roll) do
-    {10, [{t1, roll} | rest_frames]}
+  def roll({@last_frame, [{t1} | rest_frames]}, roll) do
+    {@last_frame, [{t1, roll} | rest_frames]}
   end
 
-  # strike
-  def roll({frame, [{} | rest_frames]}, 10) when frame != 10 do
-    {frame + 1, [{}, {10} | rest_frames]}
+  def roll({frame, [{} | rest_frames]}, @strike) when frame != @last_frame do
+    {frame + 1, [{}, {@strike} | rest_frames]}
   end
 
   # 1st throw
@@ -78,18 +80,18 @@ defmodule Bowling do
     If the game isn't complete, it returns a helpful message.
   """
 
-  defguard game_not_ended(frame) when frame < 10
-  defguard game_not_ended(t1, t2) when t1 + t2 == 10 or t1 + t2 == 20
+  defguard game_not_ended(frame) when frame < @last_frame
+  defguard game_not_ended(t1, t2) when is_spare(t1, t2) or t1 + t2 == 2 * @strike
   @spec score(any) :: integer | String.t()
   def score({frame, _}) when game_not_ended(frame) do
     @game_not_ended
   end
 
-  def score({10, [{10} | _]}) do
+  def score({@last_frame, [{@strike} | _]}) do
     @game_not_ended
   end
 
-  def score({10, [{t1, t2} | _]}) when game_not_ended(t1, t2) do
+  def score({@last_frame, [{t1, t2} | _]}) when game_not_ended(t1, t2) do
     @game_not_ended
   end
 
@@ -101,12 +103,12 @@ defmodule Bowling do
   defp do_score([], sum, _), do: sum
 
   # strike
-  defp do_score([{10} | rest], sum, {after1, after2}) do
-    do_score(rest, 10 + after1 + after2 + sum, {10, after1})
+  defp do_score([{@strike} | rest], sum, {after1, after2}) do
+    do_score(rest, @strike + after1 + after2 + sum, {@strike, after1})
   end
 
   # spare
-  defp do_score([{t1, t2} | rest], sum, {after1, _}) when t1 + t2 == 10 do
+  defp do_score([{t1, t2} | rest], sum, {after1, _}) when is_spare(t1, t2) do
     do_score(rest, t1 + t2 + after1 + sum, {t1, t2})
   end
 
