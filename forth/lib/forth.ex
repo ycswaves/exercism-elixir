@@ -1,5 +1,9 @@
 defmodule Forth do
-  @opaque evaluator :: any
+  @opaque evaluator :: %{evaluated: [], custom_ops: %{}}
+  @dup "DUP"
+  @drop "DROP"
+  @over "OVER"
+  @swap "SWAP"
 
   @doc """
   Create a new evaluator.
@@ -17,18 +21,14 @@ defmodule Forth do
     [_, new_op, def_str, rest_ev_str] = Regex.run(~r/:\s(.+?)\s(.+)\s;(.*)/, ev_str)
 
     if is_num(new_op) do
-      raise(Forth.InvalidWord)
+      raise Forth.InvalidWord
     end
 
     def_list = def_str |> String.trim() |> String.upcase() |> String.split()
 
     ev = %{ev | custom_ops: Map.put(custom_ops, String.upcase(new_op), def_list)}
 
-    if String.length(rest_ev_str) > 0 do
-      do_eval([String.trim(rest_ev_str)], ev)
-    else
-      ev
-    end
+    do_eval([String.trim(rest_ev_str)], ev)
   end
 
   def eval(ev, s) do
@@ -39,6 +39,7 @@ defmodule Forth do
   end
 
   defp do_eval([], ev), do: ev
+  defp do_eval([""], ev), do: ev
 
   defp do_eval(["*" | rest_input], %{evaluated: evaluated} = ev) do
     [one, two | rest_evaluated] = evaluated
@@ -46,7 +47,7 @@ defmodule Forth do
     do_eval(rest_input, %{ev | evaluated: [two * one | rest_evaluated]})
   end
 
-  defp do_eval(["/" | _], %{evaluated: [one, _ | _]}) when one == 0 do
+  defp do_eval(["/" | _], %{evaluated: [0, _ | _]}) do
     raise Forth.DivisionByZero
   end
 
@@ -68,35 +69,33 @@ defmodule Forth do
     do_eval(rest_input, %{ev | evaluated: [two - one | rest]})
   end
 
-  defp do_eval(["DUP" | rest_input], %{evaluated: [item | rest]} = ev) do
+  defp do_eval([@dup | rest_input], %{evaluated: [item | rest]} = ev) do
     do_eval(rest_input, %{ev | evaluated: [item, item | rest]})
   end
 
-  defp do_eval(["DUP" | _], _), do: raise(Forth.StackUnderflow)
+  defp do_eval([@dup | _], _), do: raise(Forth.StackUnderflow)
 
-  defp do_eval(["DROP" | rest_input], %{evaluated: [_ | rest]} = ev) do
+  defp do_eval([@drop | rest_input], %{evaluated: [_ | rest]} = ev) do
     do_eval(rest_input, %{ev | evaluated: rest})
   end
 
-  defp do_eval(["DROP" | _], _), do: raise(Forth.StackUnderflow)
+  defp do_eval([@drop | _], _), do: raise(Forth.StackUnderflow)
 
-  defp do_eval(["SWAP" | rest_input], %{evaluated: [a, b | rest]} = ev) do
+  defp do_eval([@swap | rest_input], %{evaluated: [a, b | rest]} = ev) do
     do_eval(rest_input, %{ev | evaluated: [b, a | rest]})
   end
 
-  defp do_eval(["SWAP" | rest_input], %{custom_ops: custom} = ev) do
-    if Map.has_key?(custom, "SWAP") do
-      do_eval(Map.get(custom, "SWAP") ++ rest_input, ev)
-    else
-      raise(Forth.StackUnderflow)
-    end
+  defp do_eval([@swap | rest_input], %{custom_ops: %{@swap => swap_redefined}} = ev) do
+    do_eval(swap_redefined ++ rest_input, ev)
   end
 
-  defp do_eval(["OVER" | rest_input], %{evaluated: [a, b | rest]} = ev) do
+  defp do_eval([@swap | _], _), do: raise(Forth.StackUnderflow)
+
+  defp do_eval([@over | rest_input], %{evaluated: [a, b | rest]} = ev) do
     do_eval(rest_input, %{ev | evaluated: [b, a, b | rest]})
   end
 
-  defp do_eval(["OVER" | _], _), do: raise(Forth.StackUnderflow)
+  defp do_eval([@over | _], _), do: raise(Forth.StackUnderflow)
 
   defp do_eval([op | rest_input], %{custom_ops: ops} = ev) do
     cond do
